@@ -1,0 +1,37 @@
+# Пример переменных окружения для api-gateway
+APP_ENV: dev
+PORT: "8080"
+LOG_LEVEL: info
+
+# JWT (RS256) — публичный ключ auth-service
+JWT_PUBLIC_KEY_PATH: /etc/api-gateway/jwt-public.pem
+JWT_ISSUER: auth-service
+
+# Redis / rate-limit
+REDIS_ADDR: localhost:6379
+REDIS_PASSWORD: ""
+REDIS_DB: 0
+RATE_LIMIT: 100
+RATE_LIMIT_WINDOW: 1m
+
+# Upstreams
+AUTH_URL: http://localhost:8081
+CATALOG_URL: http://localhost:8082
+ORDER_URL: http://localhost:8083
+PAYMENT_URL: http://localhost:8084
+
+# Server timeouts
+SERVER_READ_HEADER_TIMEOUT: 5s
+SERVER_READ_TIMEOUT: 15s
+SERVER_WRITE_TIMEOUT: 30s
+SERVER_IDLE_TIMEOUT: 60s
+SERVER_SHUTDOWN_TIMEOUT: 15s
+
+# Proxy / circuit breaker
+PROXY_DIAL_TIMEOUT: 5s
+PROXY_RESPONSE_TIMEOUT: 20s
+BREAKER_MAX_REQUESTS: 5
+BREAKER_INTERVAL: 10s
+BREAKER_TIMEOUT: 30s
+BREAKER_FAILURE_RATIO: 0.5
+BREAKER_MIN_REQUESTS: 10

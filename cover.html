@@ -1,0 +1,1416 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>server: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">api-gateway/cmd/server/main.go (0.0%)</option>
+				
+				<option value="file1">api-gateway/internal/auth/keys.go (100.0%)</option>
+				
+				<option value="file2">api-gateway/internal/config/config.go (80.5%)</option>
+				
+				<option value="file3">api-gateway/internal/errors/errors.go (0.0%)</option>
+				
+				<option value="file4">api-gateway/internal/logger/logger.go (0.0%)</option>
+				
+				<option value="file5">api-gateway/internal/middleware/auth.go (83.6%)</option>
+				
+				<option value="file6">api-gateway/internal/middleware/logger.go (89.5%)</option>
+				
+				<option value="file7">api-gateway/internal/middleware/metrics.go (0.0%)</option>
+				
+				<option value="file8">api-gateway/internal/middleware/ratelimit.go (90.0%)</option>
+				
+				<option value="file9">api-gateway/internal/middleware/recovery.go (100.0%)</option>
+				
+				<option value="file10">api-gateway/internal/middleware/requestid.go (100.0%)</option>
+				
+				<option value="file11">api-gateway/internal/proxy/proxy.go (92.5%)</option>
+				
+				<option value="file12">api-gateway/internal/ratelimit/redis.go (81.8%)</option>
+				
+				<option value="file13">api-gateway/internal/router/router.go (93.5%)</option>
+				
+				<option value="file14">api-gateway/internal/server/server.go (0.0%)</option>
+				
+				<option value="file15">api-gateway/internal/transport/context.go (0.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package main
+
+import (
+        "context"
+        "errors"
+        "log/slog"
+        "net/http"
+        "os"
+        "os/signal"
+        "syscall"
+
+        "api-gateway/internal/auth"
+        "api-gateway/internal/config"
+        "api-gateway/internal/logger"
+        "api-gateway/internal/ratelimit"
+        "api-gateway/internal/router"
+        "api-gateway/internal/server"
+)
+
+func main() <span class="cov0" title="0">{
+        if err := run(); err != nil </span><span class="cov0" title="0">{
+                slog.Error("fatal", "err", err)
+                os.Exit(1)
+        }</span>
+}
+
+func run() error <span class="cov0" title="0">{
+        cfg, err := config.Load()
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">log := logger.New(cfg.LogLevel, cfg.Env)
+        slog.SetDefault(log)
+
+        // JWT public key (RSA) — загружается из PEM-файла.
+        keyProvider, err := auth.NewFileKeyProvider(cfg.JWTPublicKeyPath, cfg.JWTIssuer)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        // Redis + rate limiter
+        <span class="cov0" title="0">rl, err := ratelimit.NewRedisLimiter(ratelimit.RedisOptions{
+                Addr:     cfg.RedisAddr,
+                Password: cfg.RedisPassword,
+                DB:       cfg.RedisDB,
+                Limit:    cfg.RateLimit,
+                Window:   cfg.RateLimitWindow,
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov0" title="0">defer func() </span><span class="cov0" title="0">{ _ = rl.Close() }</span>()
+
+        <span class="cov0" title="0">handler := router.New(router.Deps{
+                Config:  cfg,
+                Logger:  log,
+                Keys:    keyProvider,
+                Limiter: rl,
+        })
+
+        srv := server.New(cfg, handler)
+
+        // Запуск в фоне
+        errCh := make(chan error, 1)
+        go func() </span><span class="cov0" title="0">{
+                log.Info("api-gateway starting",
+                        "addr", srv.Addr(),
+                        "env", cfg.Env,
+                        "upstreams", cfg.Upstreams(),
+                )
+                if err := srv.ListenAndServe(); err != nil &amp;&amp; !errors.Is(err, http.ErrServerClosed) </span><span class="cov0" title="0">{
+                        errCh &lt;- err
+                }</span>
+        }()
+
+        // Ожидание сигнала или ошибки
+        <span class="cov0" title="0">stop := make(chan os.Signal, 1)
+        signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+        select </span>{
+        case err := &lt;-errCh:<span class="cov0" title="0">
+                return err</span>
+        case sig := &lt;-stop:<span class="cov0" title="0">
+                log.Info("shutdown signal received", "signal", sig.String())</span>
+        }
+
+        <span class="cov0" title="0">ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+        defer cancel()
+
+        if err := srv.Shutdown(ctx); err != nil </span><span class="cov0" title="0">{
+                log.Error("graceful shutdown failed", "err", err)
+                return err
+        }</span>
+        <span class="cov0" title="0">log.Info("api-gateway stopped")
+        return nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package auth
+
+import (
+        "crypto/rsa"
+        "errors"
+        "fmt"
+        "os"
+
+        "github.com/golang-jwt/jwt/v5"
+)
+
+type KeyProvider interface {
+        // PublicKey возвращает ключ для проверки подписи.
+        PublicKey() *rsa.PublicKey
+        // Issuer — ожидаемый iss claim.
+        Issuer() string
+}
+
+// FileKeyProvider — простейшая реализация: ключ читается один раз при старте.
+type FileKeyProvider struct {
+        key    *rsa.PublicKey
+        issuer string
+}
+
+func NewFileKeyProvider(path, issuer string) (*FileKeyProvider, error) <span class="cov10" title="4">{
+        if path == "" </span><span class="cov1" title="1">{
+                return nil, errors.New("empty public key path")
+        }</span>
+        <span class="cov8" title="3">raw, err := os.ReadFile(path)
+        if err != nil </span><span class="cov1" title="1">{
+                return nil, fmt.Errorf("read public key: %w", err)
+        }</span>
+        <span class="cov5" title="2">key, err := jwt.ParseRSAPublicKeyFromPEM(raw)
+        if err != nil </span><span class="cov1" title="1">{
+                return nil, fmt.Errorf("parse RSA public key: %w", err)
+        }</span>
+        <span class="cov1" title="1">return &amp;FileKeyProvider{key: key, issuer: issuer}, nil</span>
+}
+
+func (p *FileKeyProvider) PublicKey() *rsa.PublicKey <span class="cov1" title="1">{ return p.key }</span>
+func (p *FileKeyProvider) Issuer() string            <span class="cov1" title="1">{ return p.issuer }</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package config
+
+import (
+        "fmt"
+        "log/slog"
+        "os"
+        "strconv"
+        "strings"
+        "time"
+)
+
+type Config struct {
+        Env  string
+        Port string
+
+        LogLevel slog.Level
+
+        // JWT
+        JWTPublicKeyPath string
+        JWTIssuer        string
+
+        // Redis / rate-limit
+        RedisAddr       string
+        RedisPassword   string
+        RedisDB         int
+        RateLimit       int64
+        RateLimitWindow time.Duration
+
+        // Upstreams
+        AuthURL    string
+        CatalogURL string
+        OrderURL   string
+        PaymentURL string
+
+        // Server
+        ReadHeaderTimeout time.Duration
+        ReadTimeout       time.Duration
+        WriteTimeout      time.Duration
+        IdleTimeout       time.Duration
+        ShutdownTimeout   time.Duration
+
+        // Proxy
+        ProxyDialTimeout     time.Duration
+        ProxyResponseTimeout time.Duration
+        BreakerMaxRequests   uint32
+        BreakerInterval      time.Duration
+        BreakerTimeout       time.Duration
+        BreakerFailureRatio  float64
+        BreakerMinRequests   uint32
+}
+
+// Upstreams возвращает карту prefix→URL для логов/метрик.
+func (c *Config) Upstreams() map[string]string <span class="cov4" title="6">{
+        return map[string]string{
+                "auth":    c.AuthURL,
+                "catalog": c.CatalogURL,
+                "order":   c.OrderURL,
+                "payment": c.PaymentURL,
+        }
+}</span>
+
+func Load() (*Config, error) <span class="cov4" title="6">{
+        cfg := &amp;Config{
+                Env:      getEnv("APP_ENV", "dev"),
+                Port:     getEnv("PORT", "8080"),
+                LogLevel: parseLevel(getEnv("LOG_LEVEL", "info")),
+
+                JWTIssuer: getEnv("JWT_ISSUER", "auth-service"),
+
+                RedisAddr:       getEnv("REDIS_ADDR", "localhost:6379"),
+                RedisPassword:   getEnv("REDIS_PASSWORD", ""),
+                RedisDB:         getEnvInt("REDIS_DB", 0),
+                RateLimit:       int64(getEnvInt("RATE_LIMIT", 100)),
+                RateLimitWindow: getEnvDuration("RATE_LIMIT_WINDOW", time.Minute),
+
+                ReadHeaderTimeout: getEnvDuration("SERVER_READ_HEADER_TIMEOUT", 5*time.Second),
+                ReadTimeout:       getEnvDuration("SERVER_READ_TIMEOUT", 15*time.Second),
+                WriteTimeout:      getEnvDuration("SERVER_WRITE_TIMEOUT", 30*time.Second),
+                IdleTimeout:       getEnvDuration("SERVER_IDLE_TIMEOUT", 60*time.Second),
+                ShutdownTimeout:   getEnvDuration("SERVER_SHUTDOWN_TIMEOUT", 15*time.Second),
+
+                ProxyDialTimeout:     getEnvDuration("PROXY_DIAL_TIMEOUT", 5*time.Second),
+                ProxyResponseTimeout: getEnvDuration("PROXY_RESPONSE_TIMEOUT", 20*time.Second),
+                BreakerMaxRequests:   uint32(getEnvInt("BREAKER_MAX_REQUESTS", 5)),
+                BreakerInterval:      getEnvDuration("BREAKER_INTERVAL", 10*time.Second),
+                BreakerTimeout:       getEnvDuration("BREAKER_TIMEOUT", 30*time.Second),
+                BreakerFailureRatio:  getEnvFloat("BREAKER_FAILURE_RATIO", 0.5),
+                BreakerMinRequests:   uint32(getEnvInt("BREAKER_MIN_REQUESTS", 10)),
+        }
+
+        // Обязательные переменные — через error, а не panic.
+        required := map[string]*string{
+                "JWT_PUBLIC_KEY_PATH": &amp;cfg.JWTPublicKeyPath,
+                "AUTH_URL":            &amp;cfg.AuthURL,
+                "CATALOG_URL":         &amp;cfg.CatalogURL,
+                "ORDER_URL":           &amp;cfg.OrderURL,
+                "PAYMENT_URL":         &amp;cfg.PaymentURL,
+        }
+        for name, dst := range required </span><span class="cov8" title="27">{
+                v := os.Getenv(name)
+                if v == "" </span><span class="cov1" title="1">{
+                        return nil, fmt.Errorf("environment variable %s is required", name)
+                }</span>
+                <span class="cov8" title="26">*dst = v</span>
+        }
+
+        <span class="cov4" title="5">return cfg, cfg.Validate()</span>
+}
+
+func (c *Config) Validate() error <span class="cov4" title="5">{
+        if c.Port == "" </span><span class="cov0" title="0">{
+                return fmt.Errorf("PORT is empty")
+        }</span>
+        <span class="cov4" title="5">if c.JWTPublicKeyPath == "" </span><span class="cov0" title="0">{
+                return fmt.Errorf("JWT_PUBLIC_KEY_PATH is required")
+        }</span>
+        <span class="cov4" title="5">for _, u := range c.Upstreams() </span><span class="cov7" title="17">{
+                if !strings.HasPrefix(u, "http://") &amp;&amp; !strings.HasPrefix(u, "https://") </span><span class="cov1" title="1">{
+                        return fmt.Errorf("upstream URL must be http(s): %q", u)
+                }</span>
+        }
+        <span class="cov4" title="4">return nil</span>
+}
+
+// ---------- helpers ----------
+
+func getEnv(key, def string) string <span class="cov8" title="36">{
+        if v, ok := os.LookupEnv(key); ok &amp;&amp; v != "" </span><span class="cov3" title="3">{
+                return v
+        }</span>
+        <span class="cov8" title="33">return def</span>
+}
+
+func mustGetEnv(key string) string <span class="cov0" title="0">{
+        v := os.Getenv(key)
+        if v == "" </span><span class="cov0" title="0">{
+                panic(fmt.Sprintf("environment variable %s is required", key))</span>
+        }
+        <span class="cov0" title="0">return v</span>
+}
+
+func getEnvInt(key string, def int) int <span class="cov7" title="24">{
+        if v, ok := os.LookupEnv(key); ok </span><span class="cov2" title="2">{
+                if n, err := strconv.Atoi(v); err == nil </span><span class="cov1" title="1">{
+                        return n
+                }</span>
+        }
+        <span class="cov7" title="23">return def</span>
+}
+
+func getEnvFloat(key string, def float64) float64 <span class="cov4" title="6">{
+        if v, ok := os.LookupEnv(key); ok </span><span class="cov1" title="1">{
+                if f, err := strconv.ParseFloat(v, 64); err == nil </span><span class="cov1" title="1">{
+                        return f
+                }</span>
+        }
+        <span class="cov4" title="5">return def</span>
+}
+
+func getEnvDuration(key string, def time.Duration) time.Duration <span class="cov10" title="60">{
+        if v, ok := os.LookupEnv(key); ok </span><span class="cov2" title="2">{
+                if d, err := time.ParseDuration(v); err == nil </span><span class="cov1" title="1">{
+                        return d
+                }</span>
+        }
+        <span class="cov9" title="59">return def</span>
+}
+
+func parseLevel(s string) slog.Level <span class="cov4" title="6">{
+        switch strings.ToLower(s) </span>{
+        case "debug":<span class="cov1" title="1">
+                return slog.LevelDebug</span>
+        case "warn", "warning":<span class="cov0" title="0">
+                return slog.LevelWarn</span>
+        case "error":<span class="cov0" title="0">
+                return slog.LevelError</span>
+        default:<span class="cov4" title="5">
+                return slog.LevelInfo</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package errors
+
+import (
+        "encoding/json"
+        "net/http"
+)
+
+type APIError struct {
+        Code    string `json:"code"`
+        Message string `json:"message"`
+        Details any    `json:"details,omitempty"`
+}
+
+func Write(w http.ResponseWriter, status int, code, message string) <span class="cov0" title="0">{
+        w.Header().Set("Content-Type", "application/json; charset=utf-8")
+        w.WriteHeader(status)
+        _ = json.NewEncoder(w).Encode(APIError{Code: code, Message: message})
+}</span>
+
+// Удобные шорткаты.
+func Unauthorized(w http.ResponseWriter, msg string) <span class="cov0" title="0">{
+        Write(w, http.StatusUnauthorized, "unauthorized", msg)
+}</span>
+
+func Forbidden(w http.ResponseWriter, msg string) <span class="cov0" title="0">{
+        Write(w, http.StatusForbidden, "forbidden", msg)
+}</span>
+
+func TooManyRequests(w http.ResponseWriter, retryAfter int) <span class="cov0" title="0">{
+        w.Header().Set("Retry-After", itoa(retryAfter))
+        Write(w, http.StatusTooManyRequests, "rate_limited", "too many requests")
+}</span>
+
+func BadGateway(w http.ResponseWriter, msg string) <span class="cov0" title="0">{
+        Write(w, http.StatusBadGateway, "bad_gateway", msg)
+}</span>
+
+func Internal(w http.ResponseWriter) <span class="cov0" title="0">{
+        Write(w, http.StatusInternalServerError, "internal_error", "internal server error")
+}</span>
+
+func itoa(n int) string <span class="cov0" title="0">{
+        if n &lt;= 0 </span><span class="cov0" title="0">{
+                return "1"
+        }</span>
+        <span class="cov0" title="0">buf := [20]byte{}
+        i := len(buf)
+        for n &gt; 0 </span><span class="cov0" title="0">{
+                i--
+                buf[i] = byte('0' + n%10)
+                n /= 10
+        }</span>
+        <span class="cov0" title="0">return string(buf[i:])</span>
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package logger
+
+import (
+        "log/slog"
+        "os"
+)
+
+func New(level slog.Level, env string) *slog.Logger <span class="cov0" title="0">{
+        opts := &amp;slog.HandlerOptions{Level: level}
+
+        var handler slog.Handler
+        if env == "dev" || env == "local" </span><span class="cov0" title="0">{
+                handler = slog.NewTextHandler(os.Stdout, opts)
+        }</span> else<span class="cov0" title="0"> {
+                handler = slog.NewJSONHandler(os.Stdout, opts)
+        }</span>
+
+        <span class="cov0" title="0">return slog.New(handler).With("service", "api-gateway")</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package middleware
+
+import (
+        "strings"
+
+        "net/http"
+
+        "api-gateway/internal/auth"
+        apierr "api-gateway/internal/errors"
+        "api-gateway/internal/transport"
+
+        "github.com/golang-jwt/jwt/v5"
+)
+
+type AuthConfig struct {
+        Provider          auth.KeyProvider
+        PublicRoutes      []PublicRoute
+        ProtectedPrefixes []string
+}
+
+// PublicRoute описывает маршрут, доступный без токена.
+// Method = "" — любой.
+type PublicRoute struct {
+        Method string
+        Prefix string
+        Exact  bool
+}
+
+func Auth(cfg AuthConfig) func(http.Handler) http.Handler <span class="cov10" title="9">{
+        return func(next http.Handler) http.Handler </span><span class="cov10" title="9">{
+                return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov10" title="9">{
+                        // Не наш префикс — не наше дело, пусть роутер решает.
+                        if !hasAnyPrefix(r.URL.Path, cfg.ProtectedPrefixes) </span><span class="cov0" title="0">{
+                                next.ServeHTTP(w, r)
+                                return
+                        }</span>
+
+                        <span class="cov10" title="9">if isPublic(cfg.PublicRoutes, r) </span><span class="cov1" title="1">{
+                                next.ServeHTTP(w, r)
+                                return
+                        }</span>
+
+                        <span class="cov9" title="8">token, err := extractBearer(r)
+                        if err != nil </span><span class="cov5" title="3">{
+                                apierr.Unauthorized(w, err.Error())
+                                return
+                        }</span>
+
+                        <span class="cov7" title="5">claims, err := parseAndValidate(token, cfg.Provider)
+                        if err != nil </span><span class="cov6" title="4">{
+                                apierr.Unauthorized(w, err.Error())
+                                return
+                        }</span>
+
+                        <span class="cov1" title="1">sub, _ := claims["sub"].(string)
+                        roles := extractRoles(claims)
+
+                        next.ServeHTTP(w, r.WithContext(transport.WithUser(r.Context(), sub, roles)))</span>
+                })
+        }
+}
+
+func hasAnyPrefix(path string, prefixes []string) bool <span class="cov10" title="9">{
+        if len(prefixes) == 0 </span><span class="cov10" title="9">{
+                return true // по умолчанию защищаем всё
+        }</span>
+        <span class="cov0" title="0">for _, p := range prefixes </span><span class="cov0" title="0">{
+                if strings.HasPrefix(path, p) </span><span class="cov0" title="0">{
+                        return true
+                }</span>
+        }
+        <span class="cov0" title="0">return false</span>
+}
+
+func isPublic(routes []PublicRoute, r *http.Request) bool <span class="cov10" title="9">{
+        for _, pr := range routes </span><span class="cov3" title="2">{
+                if pr.Method != "" &amp;&amp; pr.Method != r.Method </span><span class="cov1" title="1">{
+                        continue</span>
+                }
+                <span class="cov1" title="1">if pr.Exact </span><span class="cov1" title="1">{
+                        if r.URL.Path == pr.Prefix </span><span class="cov1" title="1">{
+                                return true
+                        }</span>
+                        <span class="cov0" title="0">continue</span>
+                }
+                <span class="cov0" title="0">if strings.HasPrefix(r.URL.Path, pr.Prefix) </span><span class="cov0" title="0">{
+                        return true
+                }</span>
+        }
+        <span class="cov9" title="8">return false</span>
+}
+
+func extractBearer(r *http.Request) (string, error) <span class="cov9" title="8">{
+        h := r.Header.Get("Authorization")
+        if h == "" </span><span class="cov3" title="2">{
+                return "", errMsg("missing Authorization header")
+        }</span>
+        <span class="cov8" title="6">const prefix = "Bearer "
+        if !strings.HasPrefix(h, prefix) </span><span class="cov1" title="1">{
+                return "", errMsg("invalid Authorization scheme")
+        }</span>
+        <span class="cov7" title="5">tok := strings.TrimSpace(h[len(prefix):])
+        if tok == "" </span><span class="cov0" title="0">{
+                return "", errMsg("empty bearer token")
+        }</span>
+        <span class="cov7" title="5">return tok, nil</span>
+}
+
+func parseAndValidate(raw string, kp auth.KeyProvider) (jwt.MapClaims, error) <span class="cov7" title="5">{
+        parser := jwt.NewParser(
+                jwt.WithValidMethods([]string{"RS256"}),
+                jwt.WithIssuer(kp.Issuer()),
+                jwt.WithExpirationRequired(),
+        )
+        token, err := parser.Parse(raw, func(t *jwt.Token) (any, error) </span><span class="cov6" title="4">{
+                return kp.PublicKey(), nil
+        }</span>)
+        <span class="cov7" title="5">if err != nil </span><span class="cov6" title="4">{
+                return nil, errMsg("invalid token: " + err.Error())
+        }</span>
+        <span class="cov1" title="1">claims, ok := token.Claims.(jwt.MapClaims)
+        if !ok </span><span class="cov0" title="0">{
+                return nil, errMsg("invalid claims type")
+        }</span>
+        <span class="cov1" title="1">return claims, nil</span>
+}
+
+func extractRoles(claims jwt.MapClaims) []string <span class="cov8" title="7">{
+        raw, ok := claims["roles"]
+        if !ok </span><span class="cov1" title="1">{
+                return nil
+        }</span>
+        <span class="cov8" title="6">switch v := raw.(type) </span>{
+        case []any:<span class="cov5" title="3">
+                out := make([]string, 0, len(v))
+                for _, item := range v </span><span class="cov8" title="7">{
+                        if s, ok := item.(string); ok </span><span class="cov8" title="6">{
+                                out = append(out, s)
+                        }</span>
+                }
+                <span class="cov5" title="3">return out</span>
+        case []string:<span class="cov1" title="1">
+                return v</span>
+        case string:<span class="cov1" title="1">
+                return strings.Split(v, ",")</span>
+        default:<span class="cov1" title="1">
+                return nil</span>
+        }
+}
+
+type errMsg string
+
+func (e errMsg) Error() string <span class="cov8" title="7">{ return string(e) }</span>
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package middleware
+
+import (
+        "log/slog"
+        "net/http"
+        "time"
+
+        "api-gateway/internal/transport"
+)
+
+type wrappedWriter struct {
+        http.ResponseWriter
+        status int
+        bytes  int
+}
+
+func (w *wrappedWriter) WriteHeader(code int) <span class="cov6" title="4">{
+        w.status = code
+        w.ResponseWriter.WriteHeader(code)
+}</span>
+
+func (w *wrappedWriter) Write(b []byte) (int, error) <span class="cov1" title="1">{
+        if w.status == 0 </span><span class="cov0" title="0">{
+                w.status = http.StatusOK
+        }</span>
+        <span class="cov1" title="1">n, err := w.ResponseWriter.Write(b)
+        w.bytes += n
+        return n, err</span>
+}
+
+func Logger(log *slog.Logger) func(http.Handler) http.Handler <span class="cov6" title="4">{
+        return func(next http.Handler) http.Handler </span><span class="cov6" title="4">{
+                return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov6" title="4">{
+                        start := time.Now()
+                        ww := &amp;wrappedWriter{ResponseWriter: w}
+
+                        next.ServeHTTP(ww, r)
+
+                        if ww.status == 0 </span><span class="cov0" title="0">{
+                                ww.status = http.StatusOK
+                        }</span>
+                        <span class="cov6" title="4">log.LogAttrs(r.Context(), levelFor(ww.status), "http_request",
+                                slog.String("request_id", transport.RequestID(r.Context())),
+                                slog.String("method", r.Method),
+                                slog.String("path", r.URL.Path),
+                                slog.String("query", r.URL.RawQuery),
+                                slog.Int("status", ww.status),
+                                slog.Int("bytes", ww.bytes),
+                                slog.Duration("duration", time.Since(start)),
+                                slog.String("remote_addr", r.RemoteAddr),
+                                slog.String("user_agent", r.UserAgent()),
+                                slog.String("user_id", transport.UserID(r.Context())),
+                        )</span>
+                })
+        }
+}
+
+func levelFor(status int) slog.Level <span class="cov10" title="10">{
+        switch </span>{
+        case status &gt;= 500:<span class="cov5" title="3">
+                return slog.LevelError</span>
+        case status &gt;= 400:<span class="cov6" title="4">
+                return slog.LevelWarn</span>
+        default:<span class="cov5" title="3">
+                return slog.LevelInfo</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package middleware
+
+import (
+        "net/http"
+        "strconv"
+        "time"
+
+        "github.com/go-chi/chi/v5"
+        "github.com/prometheus/client_golang/prometheus"
+        "github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+        httpRequestsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+                Name: "http_requests_total",
+                Help: "Total HTTP requests processed by the gateway.",
+        }, []string{"method", "route", "status"})
+
+        httpRequestDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+                Name:    "http_request_duration_seconds",
+                Help:    "HTTP request latency.",
+                Buckets: prometheus.DefBuckets, // 5ms..10s
+        }, []string{"method", "route"})
+
+        httpRequestsInFlight = promauto.NewGauge(prometheus.GaugeOpts{
+                Name: "http_requests_in_flight",
+                Help: "Current number of in-flight HTTP requests.",
+        })
+)
+
+func Metrics(next http.Handler) http.Handler <span class="cov0" title="0">{
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov0" title="0">{
+                httpRequestsInFlight.Inc()
+                defer httpRequestsInFlight.Dec()
+
+                start := time.Now()
+                ww := &amp;wrappedWriter{ResponseWriter: w}
+                next.ServeHTTP(ww, r)
+
+                // Используем паттерн маршрута, а не URL — иначе высокая кардинальность.
+                route := chi.RouteContext(r.Context()).RoutePattern()
+                if route == "" </span><span class="cov0" title="0">{
+                        route = "unmatched"
+                }</span>
+                <span class="cov0" title="0">if ww.status == 0 </span><span class="cov0" title="0">{
+                        ww.status = http.StatusOK
+                }</span>
+
+                <span class="cov0" title="0">httpRequestsTotal.WithLabelValues(r.Method, route, strconv.Itoa(ww.status)).Inc()
+                httpRequestDuration.WithLabelValues(r.Method, route).Observe(time.Since(start).Seconds())</span>
+        })
+}
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package middleware
+
+import (
+        "net"
+        "net/http"
+        "strings"
+
+        apierr "api-gateway/internal/errors"
+        "api-gateway/internal/ratelimit"
+        "api-gateway/internal/transport"
+)
+
+func RateLimit(limiter ratelimit.Limiter) func(http.Handler) http.Handler <span class="cov7" title="5">{
+        return func(next http.Handler) http.Handler </span><span class="cov7" title="5">{
+                return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov7" title="5">{
+                        key := clientKey(r)
+
+                        allowed, remaining, retryAfter, err := limiter.Allow(r.Context(), key)
+                        if err != nil </span><span class="cov1" title="1">{
+                                // Fail-open: Redis недоступен — пропускаем.
+                                next.ServeHTTP(w, r)
+                                return
+                        }</span>
+
+                        <span class="cov7" title="4">w.Header().Set("X-RateLimit-Remaining", itoa64(remaining))
+
+                        if !allowed </span><span class="cov1" title="1">{
+                                apierr.TooManyRequests(w, int(retryAfter.Seconds())+1)
+                                return
+                        }</span>
+                        <span class="cov5" title="3">next.ServeHTTP(w, r)</span>
+                })
+        }
+}
+
+func clientKey(r *http.Request) string <span class="cov7" title="5">{
+        if uid := transport.UserID(r.Context()); uid != "" </span><span class="cov1" title="1">{
+                return "u:" + uid
+        }</span>
+        <span class="cov7" title="4">return "ip:" + clientIP(r)</span>
+}
+
+func clientIP(r *http.Request) string <span class="cov10" title="8">{
+        if xff := r.Header.Get("X-Forwarded-For"); xff != "" </span><span class="cov4" title="2">{
+                parts := strings.Split(xff, ",")
+                if ip := strings.TrimSpace(parts[0]); ip != "" </span><span class="cov4" title="2">{
+                        return ip
+                }</span>
+        }
+        <span class="cov8" title="6">if rip := r.Header.Get("X-Real-IP"); rip != "" </span><span class="cov1" title="1">{
+                return rip
+        }</span>
+        <span class="cov7" title="5">host, _, err := net.SplitHostPort(r.RemoteAddr)
+        if err != nil </span><span class="cov0" title="0">{
+                return r.RemoteAddr
+        }</span>
+        <span class="cov7" title="5">return host</span>
+}
+
+func itoa64(n int64) string <span class="cov7" title="4">{
+        if n == 0 </span><span class="cov5" title="3">{
+                return "0"
+        }</span>
+        <span class="cov1" title="1">neg := n &lt; 0
+        if neg </span><span class="cov0" title="0">{
+                n = -n
+        }</span>
+        <span class="cov1" title="1">buf := [20]byte{}
+        i := len(buf)
+        for n &gt; 0 </span><span class="cov4" title="2">{
+                i--
+                buf[i] = byte('0' + n%10)
+                n /= 10
+        }</span>
+        <span class="cov1" title="1">if neg </span><span class="cov0" title="0">{
+                i--
+                buf[i] = '-'
+        }</span>
+        <span class="cov1" title="1">return string(buf[i:])</span>
+}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">package middleware
+
+import (
+        "log/slog"
+        "net/http"
+        "runtime/debug"
+
+        apierr "api-gateway/internal/errors"
+        "api-gateway/internal/transport"
+)
+
+func Recovery(log *slog.Logger) func(http.Handler) http.Handler <span class="cov10" title="2">{
+        return func(next http.Handler) http.Handler </span><span class="cov10" title="2">{
+                return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov10" title="2">{
+                        defer func() </span><span class="cov10" title="2">{
+                                if rec := recover(); rec != nil </span><span class="cov1" title="1">{
+                                        log.Error("panic recovered",
+                                                "request_id", transport.RequestID(r.Context()),
+                                                "panic", rec,
+                                                "stack", string(debug.Stack()),
+                                                "path", r.URL.Path,
+                                        )
+                                        apierr.Internal(w)
+                                }</span>
+                        }()
+                        <span class="cov10" title="2">next.ServeHTTP(w, r)</span>
+                })
+        }
+}
+</pre>
+		
+		<pre class="file" id="file10" style="display: none">package middleware
+
+import (
+        "crypto/rand"
+        "encoding/hex"
+        "net/http"
+
+        "api-gateway/internal/transport"
+)
+
+const HeaderRequestID = "X-Request-ID"
+
+func RequestID(next http.Handler) http.Handler <span class="cov10" title="2">{
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov10" title="2">{
+                id := r.Header.Get(HeaderRequestID)
+                if id == "" </span><span class="cov1" title="1">{
+                        id = newID()
+                }</span>
+                <span class="cov10" title="2">w.Header().Set(HeaderRequestID, id)
+                next.ServeHTTP(w, r.WithContext(transport.WithRequestID(r.Context(), id)))</span>
+        })
+}
+
+func newID() string <span class="cov1" title="1">{
+        var b [16]byte
+        _, _ = rand.Read(b[:])
+        return hex.EncodeToString(b[:])
+}</span>
+</pre>
+		
+		<pre class="file" id="file11" style="display: none">package proxy
+
+import (
+        "context"
+        "errors"
+        "net"
+        "net/http"
+        "net/http/httputil"
+        "net/url"
+        "time"
+
+        "github.com/sony/gobreaker"
+)
+
+type Options struct {
+        Name            string
+        Target          *url.URL
+        Transport       http.RoundTripper
+        DialTimeout     time.Duration
+        ResponseTimeout time.Duration
+
+        BreakerMaxRequests  uint32
+        BreakerInterval     time.Duration
+        BreakerTimeout      time.Duration
+        BreakerFailureRatio float64
+        BreakerMinRequests  uint32
+}
+
+type Proxy struct {
+        name    string
+        target  *url.URL
+        rp      *httputil.ReverseProxy
+        breaker *gobreaker.CircuitBreaker
+}
+
+func New(opts Options) *Proxy <span class="cov6" title="5">{
+        transport := opts.Transport
+        if transport == nil </span><span class="cov6" title="5">{
+                transport = &amp;http.Transport{
+                        DialContext: (&amp;net.Dialer{
+                                Timeout:   opts.DialTimeout,
+                                KeepAlive: 30 * time.Second,
+                        }).DialContext,
+                        MaxIdleConns:          200,
+                        MaxIdleConnsPerHost:   50,
+                        IdleConnTimeout:       90 * time.Second,
+                        TLSHandshakeTimeout:   5 * time.Second,
+                        ExpectContinueTimeout: 1 * time.Second,
+                        ResponseHeaderTimeout: opts.ResponseTimeout,
+                        ForceAttemptHTTP2:     true,
+                }
+        }</span>
+
+        <span class="cov6" title="5">rp := &amp;httputil.ReverseProxy{
+                Director: func(req *http.Request) </span><span class="cov8" title="9">{
+                        req.URL.Scheme = opts.Target.Scheme
+                        req.URL.Host = opts.Target.Host
+                        req.Host = opts.Target.Host
+                        req.Header.Set("X-Forwarded-Host", req.Host)
+                        req.Header.Set("X-Forwarded-Proto", schemeOf(req))
+                }</span>,
+                Transport:     transport,
+                FlushInterval: 100 * time.Millisecond,
+                ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) <span class="cov1" title="1">{
+                        // Настоящие ошибки обрабатываются уровнем выше (router) — здесь
+                        // только пишем 502 и уходим. Роутер добавит JSON-обёртку.
+                        http.Error(w, `{"error":"upstream unavailable"}`, http.StatusBadGateway)
+                }</span>,
+        }
+
+        <span class="cov6" title="5">cb := gobreaker.NewCircuitBreaker(gobreaker.Settings{
+                Name:        opts.Name,
+                MaxRequests: opts.BreakerMaxRequests,
+                Interval:    opts.BreakerInterval,
+                Timeout:     opts.BreakerTimeout,
+                ReadyToTrip: func(c gobreaker.Counts) bool </span><span class="cov8" title="7">{
+                        if c.Requests &lt; opts.BreakerMinRequests </span><span class="cov6" title="5">{
+                                return false
+                        }</span>
+                        <span class="cov3" title="2">ratio := float64(c.TotalFailures) / float64(c.Requests)
+                        return ratio &gt;= opts.BreakerFailureRatio</span>
+                },
+                IsSuccessful: func(err error) bool <span class="cov8" title="9">{
+                        // Считаем только сетевые ошибки и 5xx как "провал".
+                        // 4xx — это ответ бизнес-логики, не поломка сервиса.
+                        return err == nil
+                }</span>,
+        })
+
+        <span class="cov6" title="5">return &amp;Proxy{name: opts.Name, target: opts.Target, rp: rp, breaker: cb}</span>
+}
+
+func (p *Proxy) Name() string     <span class="cov1" title="1">{ return p.name }</span>
+func (p *Proxy) Target() *url.URL <span class="cov1" title="1">{ return p.target }</span>
+
+// ServeHTTP прогоняет запрос через circuit-breaker и reverse-proxy.
+func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) <span class="cov10" title="12">{
+        _, err := p.breaker.Execute(func() (any, error) </span><span class="cov8" title="9">{
+                // Считаем 5xx как ошибку — для этого перехватываем WriteHeader.
+                rec := &amp;statusRecorder{ResponseWriter: w, status: 0}
+                p.rp.ServeHTTP(rec, r)
+                if rec.status &gt;= 500 </span><span class="cov8" title="7">{
+                        return nil, errors.New("upstream 5xx")
+                }</span>
+                <span class="cov3" title="2">return nil, nil</span>
+        })
+        <span class="cov10" title="12">if err != nil </span><span class="cov9" title="10">{
+                if errors.Is(err, gobreaker.ErrOpenState) || errors.Is(err, gobreaker.ErrTooManyRequests) </span><span class="cov4" title="3">{
+                        // Breaker открыт — 503, клиент может ретраить.
+                        w.Header().Set("Retry-After", "10")
+                        http.Error(w, `{"error":"service temporarily unavailable"}`, http.StatusServiceUnavailable)
+                        return
+                }</span>
+                // Прочие ошибки уже обработаны ErrorHandler'ом reverse-proxy.
+        }
+}
+
+type statusRecorder struct {
+        http.ResponseWriter
+        status int
+}
+
+func (s *statusRecorder) WriteHeader(code int) <span class="cov8" title="9">{
+        s.status = code
+        s.ResponseWriter.WriteHeader(code)
+}</span>
+
+func (s *statusRecorder) Write(b []byte) (int, error) <span class="cov3" title="2">{
+        if s.status == 0 </span><span class="cov0" title="0">{
+                s.status = http.StatusOK
+        }</span>
+        <span class="cov3" title="2">return s.ResponseWriter.Write(b)</span>
+}
+
+func schemeOf(r *http.Request) string <span class="cov8" title="9">{
+        if r.TLS != nil </span><span class="cov0" title="0">{
+                return "https"
+        }</span>
+        <span class="cov8" title="9">if p := r.Header.Get("X-Forwarded-Proto"); p != "" </span><span class="cov0" title="0">{
+                return p
+        }</span>
+        <span class="cov8" title="9">return "http"</span>
+}
+
+var _ = context.Background
+</pre>
+		
+		<pre class="file" id="file12" style="display: none">package ratelimit
+
+import (
+        "context"
+        _ "embed"
+        "errors"
+        "fmt"
+        "time"
+
+        "github.com/redis/go-redis/v9"
+)
+
+//go:embed sliding_window.lua
+var slidingWindowScript string
+
+type Limiter interface {
+        // Allow возвращает allowed=true, если запрос разрешён.
+        // remaining — сколько осталось до лимита, retryAfter — если отклонён.
+        Allow(ctx context.Context, key string) (allowed bool, remaining int64, retryAfter time.Duration, err error)
+        Close() error
+}
+
+type RedisOptions struct {
+        Addr     string
+        Password string
+        DB       int
+        Limit    int64
+        Window   time.Duration
+}
+
+type RedisLimiter struct {
+        rdb    *redis.Client
+        script *redis.Script
+        limit  int64
+        window time.Duration
+}
+
+func NewRedisLimiter(opts RedisOptions) (*RedisLimiter, error) <span class="cov5" title="7">{
+        if opts.Limit &lt;= 0 </span><span class="cov1" title="1">{
+                return nil, errors.New("rate limit must be &gt; 0")
+        }</span>
+        <span class="cov5" title="6">if opts.Window &lt;= 0 </span><span class="cov1" title="1">{
+                return nil, errors.New("rate limit window must be &gt; 0")
+        }</span>
+        <span class="cov4" title="5">rdb := redis.NewClient(&amp;redis.Options{
+                Addr:         opts.Addr,
+                Password:     opts.Password,
+                DB:           opts.DB,
+                DialTimeout:  2 * time.Second,
+                ReadTimeout:  1 * time.Second,
+                WriteTimeout: 1 * time.Second,
+                PoolSize:     20,
+        })
+
+        ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+        defer cancel()
+        if err := rdb.Ping(ctx).Err(); err != nil </span><span class="cov1" title="1">{
+                return nil, fmt.Errorf("redis ping: %w", err)
+        }</span>
+
+        <span class="cov4" title="4">return &amp;RedisLimiter{
+                rdb:    rdb,
+                script: redis.NewScript(slidingWindowScript),
+                limit:  opts.Limit,
+                window: opts.Window,
+        }, nil</span>
+}
+
+func (l *RedisLimiter) Allow(ctx context.Context, key string) (bool, int64, time.Duration, error) <span class="cov7" title="17">{
+        now := time.Now().UnixMilli()
+        windowMs := l.window.Milliseconds()
+
+        raw, err := l.script.Run(ctx, l.rdb,
+                []string{"rl:" + key},
+                now, windowMs, l.limit,
+        ).Result()
+        if err != nil </span><span class="cov0" title="0">{
+                return false, 0, 0, fmt.Errorf("rate limiter script: %w", err)
+        }</span>
+
+        <span class="cov7" title="17">res, ok := raw.([]any)
+        if !ok || len(res) &lt; 3 </span><span class="cov0" title="0">{
+                return false, 0, 0, fmt.Errorf("unexpected script reply: %v", raw)
+        }</span>
+
+        <span class="cov7" title="17">allowed := toInt(res[0]) == 1
+        remaining := toInt(res[1])
+        oldestMs := toInt(res[2])
+
+        var retryAfter time.Duration
+        if !allowed &amp;&amp; oldestMs &gt; 0 </span><span class="cov3" title="3">{
+                retryAfter = time.Duration(oldestMs+windowMs-now) * time.Millisecond
+                if retryAfter &lt; 0 </span><span class="cov0" title="0">{
+                        retryAfter = 0
+                }</span>
+        }
+        <span class="cov7" title="17">return allowed, remaining, retryAfter, nil</span>
+}
+
+func (l *RedisLimiter) Close() error <span class="cov4" title="4">{ return l.rdb.Close() }</span>
+
+func toInt(v any) int64 <span class="cov10" title="51">{
+        switch n := v.(type) </span>{
+        case int64:<span class="cov10" title="51">
+                return n</span>
+        case int:<span class="cov0" title="0">
+                return int64(n)</span>
+        case float64:<span class="cov0" title="0">
+                return int64(n)</span>
+        default:<span class="cov0" title="0">
+                return 0</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file13" style="display: none">package router
+
+import (
+        "log/slog"
+        "net/http"
+        "net/url"
+
+        "github.com/go-chi/chi/v5"
+        chimw "github.com/go-chi/chi/v5/middleware"
+        "github.com/prometheus/client_golang/prometheus/promhttp"
+
+        "api-gateway/internal/auth"
+        "api-gateway/internal/config"
+        "api-gateway/internal/middleware"
+        "api-gateway/internal/proxy"
+        "api-gateway/internal/ratelimit"
+)
+
+type Deps struct {
+        Config  *config.Config
+        Logger  *slog.Logger
+        Keys    auth.KeyProvider
+        Limiter ratelimit.Limiter
+}
+
+func New(deps Deps) http.Handler <span class="cov6" title="12">{
+        r := chi.NewRouter()
+
+        r.Use(middleware.RequestID)
+        r.Use(chimw.RealIP)
+        r.Use(middleware.Logger(deps.Logger))
+        r.Use(middleware.Recovery(deps.Logger))
+        r.Use(middleware.Metrics)
+        r.Use(middleware.Auth(middleware.AuthConfig{
+                Provider:          deps.Keys,
+                PublicRoutes:      publicRoutes(),
+                ProtectedPrefixes: []string{"/api/v1/"}, // только API защищаем
+        }))
+        r.Use(middleware.RateLimit(deps.Limiter))
+
+        r.Handle("/metrics", promhttp.Handler())
+        r.Get("/healthz", okHandler(`{"status":"ok"}`))
+        r.Get("/readyz", okHandler(`{"status":"ready"}`))
+
+        for _, u := range upstreams(deps.Config) </span><span class="cov10" title="48">{
+                target, err := url.Parse(u.url)
+                if err != nil </span><span class="cov0" title="0">{
+                        deps.Logger.Error("invalid upstream URL", "service", u.name, "url", u.url, "err", err)
+                        continue</span>
+                }
+                <span class="cov10" title="48">p := proxy.New(proxy.Options{
+                        Name:                u.name,
+                        Target:              target,
+                        DialTimeout:         deps.Config.ProxyDialTimeout,
+                        ResponseTimeout:     deps.Config.ProxyResponseTimeout,
+                        BreakerMaxRequests:  deps.Config.BreakerMaxRequests,
+                        BreakerInterval:     deps.Config.BreakerInterval,
+                        BreakerTimeout:      deps.Config.BreakerTimeout,
+                        BreakerFailureRatio: deps.Config.BreakerFailureRatio,
+                        BreakerMinRequests:  deps.Config.BreakerMinRequests,
+                })
+                r.Handle(u.prefix+"/*", http.StripPrefix(u.prefix, p))
+                r.Handle(u.prefix, http.StripPrefix(u.prefix, p))</span>
+        }
+
+        <span class="cov6" title="12">r.NotFound(jsonError(http.StatusNotFound, "not_found", "route not found"))
+        r.MethodNotAllowed(jsonError(http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed"))
+
+        return r</span>
+}
+
+// ---------- helpers ----------
+
+type upstream struct {
+        prefix string
+        name   string
+        url    string
+}
+
+func upstreams(c *config.Config) []upstream <span class="cov6" title="12">{
+        return []upstream{
+                {"/api/v1/auth", "auth-service", c.AuthURL},
+                {"/api/v1/catalog", "catalog-service", c.CatalogURL},
+                {"/api/v1/orders", "order-service", c.OrderURL},
+                {"/api/v1/pay", "payment-service", c.PaymentURL},
+        }
+}</span>
+
+func publicRoutes() []middleware.PublicRoute <span class="cov6" title="12">{
+        return []middleware.PublicRoute{
+                {Method: http.MethodGet, Prefix: "/healthz", Exact: true},
+                {Method: http.MethodGet, Prefix: "/readyz", Exact: true},
+                {Method: http.MethodGet, Prefix: "/metrics", Exact: true},
+                {Method: http.MethodPost, Prefix: "/api/v1/auth/register", Exact: true},
+                {Method: http.MethodPost, Prefix: "/api/v1/auth/login", Exact: true},
+                {Method: http.MethodPost, Prefix: "/api/v1/auth/refresh", Exact: true},
+                {Method: http.MethodGet, Prefix: "/api/v1/catalog/products"},
+                {Method: http.MethodGet, Prefix: "/api/v1/catalog/categories"},
+        }
+}</span>
+
+func okHandler(body string) http.HandlerFunc <span class="cov8" title="24">{
+        return func(w http.ResponseWriter, _ *http.Request) </span><span class="cov3" title="3">{
+                w.Header().Set("Content-Type", "application/json")
+                _, _ = w.Write([]byte(body))
+        }</span>
+}
+
+func jsonError(status int, code, msg string) http.HandlerFunc <span class="cov8" title="24">{
+        return func(w http.ResponseWriter, _ *http.Request) </span><span class="cov2" title="2">{
+                w.Header().Set("Content-Type", "application/json")
+                w.WriteHeader(status)
+                _, _ = w.Write([]byte(`{"code":"` + code + `","message":"` + msg + `"}`))
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file14" style="display: none">package server
+
+import (
+        "context"
+        "net/http"
+
+        "api-gateway/internal/config"
+)
+
+type Server struct {
+        srv *http.Server
+}
+
+func New(cfg *config.Config, handler http.Handler) *Server <span class="cov0" title="0">{
+        return &amp;Server{
+                srv: &amp;http.Server{
+                        Addr:              ":" + cfg.Port,
+                        Handler:           handler,
+                        ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+                        ReadTimeout:       cfg.ReadTimeout,
+                        WriteTimeout:      cfg.WriteTimeout,
+                        IdleTimeout:       cfg.IdleTimeout,
+                },
+        }
+}</span>
+
+func (s *Server) Addr() string                       <span class="cov0" title="0">{ return s.srv.Addr }</span>
+func (s *Server) ListenAndServe() error              <span class="cov0" title="0">{ return s.srv.ListenAndServe() }</span>
+func (s *Server) Shutdown(ctx context.Context) error <span class="cov0" title="0">{ return s.srv.Shutdown(ctx) }</span>
+</pre>
+		
+		<pre class="file" id="file15" style="display: none">package transport
+
+import "context"
+
+type ctxKey string
+
+const (
+        ctxRequestID ctxKey = "request_id"
+        ctxUserID    ctxKey = "user_id"
+        ctxUserRoles ctxKey = "user_roles"
+)
+
+func WithRequestID(ctx context.Context, id string) context.Context <span class="cov0" title="0">{
+        return context.WithValue(ctx, ctxRequestID, id)
+}</span>
+
+func RequestID(ctx context.Context) string <span class="cov0" title="0">{
+        if v, ok := ctx.Value(ctxRequestID).(string); ok </span><span class="cov0" title="0">{
+                return v
+        }</span>
+        <span class="cov0" title="0">return ""</span>
+}
+
+func WithUser(ctx context.Context, id string, roles []string) context.Context <span class="cov0" title="0">{
+        ctx = context.WithValue(ctx, ctxUserID, id)
+        ctx = context.WithValue(ctx, ctxUserRoles, roles)
+        return ctx
+}</span>
+
+func UserID(ctx context.Context) string <span class="cov0" title="0">{
+        if v, ok := ctx.Value(ctxUserID).(string); ok </span><span class="cov0" title="0">{
+                return v
+        }</span>
+        <span class="cov0" title="0">return ""</span>
+}
+
+func UserRoles(ctx context.Context) []string <span class="cov0" title="0">{
+        if v, ok := ctx.Value(ctxUserRoles).([]string); ok </span><span class="cov0" title="0">{
+                return v
+        }</span>
+        <span class="cov0" title="0">return nil</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>
